@@ -1392,6 +1392,49 @@ ldns_rdf2buffer_str_amtrelay(ldns_buffer *output, const ldns_rdf *rdf)
 	return ldns_buffer_status(output);
 }
 
+static const char*
+ldns_svcbparams_key2text(int key) {
+	if (key == 1) { return "alpn"; }
+	if (key == 2) { return "no-default-alpn"; }
+	return NULL;
+}
+
+ldns_status
+ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
+{
+	uint8_t *data = ldns_rdf_data(rdf);
+	uint8_t *end = data + ldns_rdf_size(rdf);
+	uint8_t *p = data;
+	while (p < end) {
+		uint16_t key = ldns_read_uint16(p);
+		p += 2;
+		const char *keystr = ldns_svcbparams_key2text(key);
+		ldns_buffer_printf(output, "%s", keystr);
+		uint16_t vallen = ldns_read_uint16(p);
+		p += 2;
+		printf("AWS key %d vallen %d\n", key, vallen);
+		uint8_t *valend = p + vallen;
+		if (key == 1) {
+			// alpn
+			bool first = true;
+			while (p < valend) {
+				uint8_t ilen = *p;
+				p++;
+				if (first) {
+					ldns_buffer_printf(output, "=%.*s", ilen, p);
+					first = false;
+				} else {
+					ldns_buffer_printf(output, ",%.*s", ilen, p);
+				}
+				p += ilen;
+			}
+		} else if (key == 2) {
+			// no default alpn
+			// vallen must be 0
+		}
+	}
+	return ldns_buffer_status(output);
+}
 
 static ldns_status
 ldns_rdf2buffer_str_fmt(ldns_buffer *buffer,
@@ -1510,6 +1553,9 @@ ldns_rdf2buffer_str_fmt(ldns_buffer *buffer,
 			break;
 		case LDNS_RDF_TYPE_AMTRELAY:
 			res = ldns_rdf2buffer_str_amtrelay(buffer, rdf);
+			break;
+		case LDNS_RDF_TYPE_SVCBPARAMS:
+			res = ldns_rdf2buffer_str_svcbparams(buffer, rdf);
 			break;
 		}
 	} else {

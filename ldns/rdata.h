@@ -142,6 +142,8 @@ enum ldns_enum_rdf_type
 	/** draft-ietf-mboned-driad-amt-discovery **/
 	LDNS_RDF_TYPE_AMTRELAY,
 
+	LDNS_RDF_TYPE_SVCBPARAMS,
+
 	/* Aliases */
 	LDNS_RDF_TYPE_BITMAP = LDNS_RDF_TYPE_NSEC
 };

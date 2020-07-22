@@ -3880,3 +3880,5 @@ r._dns-sd._udp.\200\015\246\0018\;\169.jelte.nlnetlabs.nl.	3600	IN	A	1.2.3.4
 dr._dns-sd._udp.\(\242\202\\.	3600	IN	PTR	r._dns-sd._udp.\200\015\246\0018\;\169.
 loc.nlnetlabs.nl. 3600    IN      LOC \# 16 001313138b0ddd547ffb181600989fe0
 motherfish.xiph.org.    8064    IN      A       \# 0
+svcb-alias.nlnetlabs.nl.	3600	IN      SVCB    0 foo.com.
+svcb-service.nlnetlabs.nl.	3600	IN      SVCB    1 foo.com. alpn=h2

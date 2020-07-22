@@ -157,6 +157,10 @@ ldns_lookup_table ldns_error_str[] = {
 		"X509_STORE_CTX_set0_dane() functions within OpenSSL >= 1.1.0 "
 		"to be able to verify the DANE-TA usage type." },
 #endif
+	{ LDNS_STATUS_INVALID_SVCB_PARAM_KEY,
+		"Unknown or invalid SVCB parameter key" },
+	{ LDNS_STATUS_INVALID_SVCB_PARAM_VALUE,
+		"Invalid SVCB parameter value for the given key type" },
 	{ 0, NULL }
 };
 
