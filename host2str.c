@@ -1394,6 +1394,7 @@ ldns_rdf2buffer_str_amtrelay(ldns_buffer *output, const ldns_rdf *rdf)
 
 static const char*
 ldns_svcbparams_key2text(int key) {
+	if (key == 0) { return "mandatory"; }
 	if (key == 1) { return "alpn"; }
 	if (key == 2) { return "no-default-alpn"; }
 	return NULL;
@@ -1404,34 +1405,51 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 {
 	uint8_t *data = ldns_rdf_data(rdf);
 	uint8_t *end = data + ldns_rdf_size(rdf);
-	uint8_t *p = data;
-	while (p < end) {
-		uint16_t key = ldns_read_uint16(p);
-		p += 2;
-		const char *keystr = ldns_svcbparams_key2text(key);
-		ldns_buffer_printf(output, "%s", keystr);
-		uint16_t vallen = ldns_read_uint16(p);
-		p += 2;
-		printf("AWS key %d vallen %d\n", key, vallen);
-		uint8_t *valend = p + vallen;
+	uint8_t *datap = data;
+	bool first_key = true;
+	while (datap < end) {
+		uint16_t key = ldns_read_uint16(datap);
+		datap += 2;
+		const char *key_str = ldns_svcbparams_key2text(key);
+		if (key_str == NULL) {
+			return LDNS_STATUS_WIRE_RDATA_ERR;
+		}
+		ldns_buffer_printf(output, "%s%s", first_key ? "" : " ", key_str);
+		uint16_t val_len = ldns_read_uint16(datap);
+		datap += 2;
+		printf("AWS key %d val_len %d\n", key, val_len);
+		uint8_t *val_end_datap = datap + val_len;
+		if (key == 0) {
+			bool first_item = true;
+			while (datap < val_end_datap) {
+				uint16_t item_key = ldns_read_uint16(datap);
+				ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', 
+					ldns_svcbparams_key2text(item_key));
+				first_item = false;
+				datap += 2;
+			}
+		}
 		if (key == 1) {
 			// alpn
-			bool first = true;
-			while (p < valend) {
-				uint8_t ilen = *p;
-				p++;
-				if (first) {
-					ldns_buffer_printf(output, "=%.*s", ilen, p);
-					first = false;
-				} else {
-					ldns_buffer_printf(output, ",%.*s", ilen, p);
+			bool first_item = true;
+			while (datap < val_end_datap) {
+				uint8_t item_len = *datap;
+				datap++;
+				if (datap + item_len > val_end_datap) {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
 				}
-				p += ilen;
+				ldns_buffer_printf(output, "%c%.*s", first_item ? '=' : ',', 
+					item_len, datap);
+				first_item = false;
+				datap += item_len;
 			}
 		} else if (key == 2) {
-			// no default alpn
-			// vallen must be 0
+			// no-default-alpn, must have length value
+			if (val_len > 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
 		}
+		first_key = false;
 	}
 	return ldns_buffer_status(output);
 }
