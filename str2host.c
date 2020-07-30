@@ -1807,6 +1807,8 @@ ldns_svcbparams_text2key(const char *str)
 	if (strcmp(str, "mandatory") == 0) { return 0; }
 	if (strcmp(str, "alpn") == 0) { return 1; }
 	if (strcmp(str, "no-default-alpn") == 0) { return 2; }
+	if (strcmp(str, "port") == 0) { return 3; }
+	if (strcmp(str, "ipv4hint") == 0) { return 4; }
 	return -1;
 } 
 
@@ -1947,6 +1949,33 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			}
 		} else if (key == 2) {
 			// TODO - check valuestr empty
+		} else if (key == 3) {
+			// port has a 16-bit unsigned int value
+			// TODO - check outside of range
+			int port = atoi(val_str);
+			ldns_write_uint16(datap, port);
+			datap += 2;
+		} else if (key == 4) {
+			// ipv4hint has common separated IPv4 values
+			char addr_str[INET_ADDRSTRLEN];
+			in_addr_t address;
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					memcpy(addr_str, start, p - start);
+					addr_str[p-start] = '\0';
+					if (inet_pton(AF_INET, addr_str, &address) != 1) {
+						LDNS_FREE(token);
+						ldns_buffer_free(str_buf);
+						LDNS_FREE(param_rdf);
+						return LDNS_STATUS_INVALID_IP4;
+					}
+					memcpy(datap, &address, 4);
+					datap += 4;
+					start = p + 1;
+				}
+			}
 		} else {
 			// unknown key uses escaped byte sequence string
 			status = ldns_str2rdf_long_str(&param_rdf, val_str);
