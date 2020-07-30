@@ -322,6 +322,16 @@ ldns_status ldns_str2rdf_hip(ldns_rdf **rd, const char *str);
  */
 ldns_status ldns_str2rdf_amtrelay(ldns_rdf **rd, const char *str);
 
+/**
+ * Convert a "<SvcPriority> <TargetName> <SvcParams>" encoding
+ * of the value field to wire format, as specified in 
+ * [draft-ietf-dnsop-svcb-https-01]
+ * \param[in] rd the rdf where to put the data
+ * \param[in] str the string to be converted
+ * \return ldns_status
+ */
+ldns_status ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str);
+
 #ifdef __cplusplus
 }
 #endif

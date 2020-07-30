@@ -1809,45 +1809,76 @@ ldns_svcbparams_text2key(const char *str)
 	if (strcmp(str, "no-default-alpn") == 0) { return 2; }
 	if (strcmp(str, "port") == 0) { return 3; }
 	if (strcmp(str, "ipv4hint") == 0) { return 4; }
+	if (strcmp(str, "echconfig") == 0) { return 5; }
+	if (strcmp(str, "ipv6hint") == 0) { return 6; }
+	if (strncmp(str, "key", 3) == 0) {
+		int n = atoi(str + 3);
+		if (n > 0 && n <= USHRT_MAX) {
+			return n;
+		}
+	}
+	int n = atoi(str);
+	if (n > 0 && n <= USHRT_MAX) {
+		return n;
+	}
 	return -1;
 } 
 
 ldns_status
 ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 {
-	uint8_t data[65536];
-	uint8_t *datap = data;
+	uint8_t *data = NULL;
+	uint8_t *datap = NULL;
 	ldns_status status = LDNS_STATUS_OK;
 	int params_len;
 	const char *delimiters = "\n\t ";
-	char *token = LDNS_XMALLOC(char, LDNS_MAX_RDFLEN);
-	ldns_buffer *str_buf;
-	ldns_rdf *param_rdf;
+	char *token = NULL;
+	ldns_buffer *str_buf = NULL;
+	char *key_str = NULL;
+	char *val_str = NULL;
+	char *item_str = NULL;
+	uint8_t *item_buffer = NULL;
+	ldns_rdf *item_rdf = NULL;
 
-	printf("AWS parse %s\n", str);
-
-	if(!token) return LDNS_STATUS_MEM_ERR;
 	if(rd == NULL) {
-		LDNS_FREE(token);
 		return LDNS_STATUS_NULL;
 	}
 
 	str_buf = LDNS_MALLOC(ldns_buffer);
 	if(!str_buf) {
-		LDNS_FREE(token);
 		return LDNS_STATUS_MEM_ERR;
 	}
 	ldns_buffer_new_frm_data(str_buf, (char *)str, strlen(str));
 	if(ldns_buffer_status(str_buf) != LDNS_STATUS_OK) {
-		LDNS_FREE(str_buf);
-		LDNS_FREE(token);
-		return LDNS_STATUS_MEM_ERR;
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
 	}
 
+	token = LDNS_XMALLOC(char, LDNS_MAX_RDFLEN);
+	if (!token) {
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
+	}
+
+	data = LDNS_XMALLOC(uint8_t, LDNS_MAX_RDFLEN);
+	if (!data) {
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
+	}
+	datap = data;
+
 	while (ldns_bget_token(str_buf, token, delimiters, LDNS_MAX_RDFLEN) > 0) {
-		printf("AWS token %s\n", token);
-		char key_str[256];
-		char val_str[65536];
+		//printf("AWS token %s\n", token);
+		key_str = LDNS_XMALLOC(char, strlen(token) + 1);
+		if (!key_str) {
+			status = LDNS_STATUS_MEM_ERR;
+			goto error;
+		}
+		val_str = LDNS_XMALLOC(char, strlen(token) + 1);
+		if (!val_str) {
+			status = LDNS_STATUS_MEM_ERR;
+			goto error;
+		}
 		char *equals_in_str = strchr(token, '=');
 		if (equals_in_str == NULL) {
 			// Just a key with no value, set value str to empty string
@@ -1863,10 +1894,8 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 				// Strip off qoutes around the value if they are used
 				if (token[equals_idx+1] == '"' && token[token_len-1] == '"') {
 					if (token_len - equals_idx < 4) {
-						LDNS_FREE(token);
-						ldns_buffer_free(str_buf);
-						LDNS_FREE(param_rdf);
-						return LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						goto error;
 					}
 					memcpy(val_str, equals_in_str + 2, token_len - equals_idx - 2);
 					val_str[token_len - equals_idx - 3] = '\0';
@@ -1875,34 +1904,29 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 				}
 			} else {
 				// '=' is at the beginning or end of the token, this is not allowed
-				LDNS_FREE(token);
-				ldns_buffer_free(str_buf);
-				LDNS_FREE(param_rdf);
-				return LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+				goto error;
 			}
 		}
-		printf("AWS key_str %s\n", key_str);
+
 		int key = ldns_svcbparams_text2key(key_str);
 		if (key == -1) {
-			LDNS_FREE(token);
-			ldns_buffer_free(str_buf);
-			LDNS_FREE(param_rdf);
-			return LDNS_STATUS_INVALID_SVCB_PARAM_KEY;
+			status = LDNS_STATUS_INVALID_SVCB_PARAM_KEY;
+			goto error;
 		}
 		ldns_write_uint16(datap, key);
 		datap += 2;
-		printf("AWS key %d\n", key);
 		
-		printf("AWS val_str %s\n", val_str);
-		if ((val_str[0] == '\0' && key != 2) ||
+		// no-default-alpn must have no value, all other knonw types must have
+		// a non-zero length value, and unknown types may or may not have a value
+		if ((val_str[0] == '\0' && key != 2 && key <= 6) ||
 				(val_str[0] != '\0' && key == 2)) {
-			LDNS_FREE(token);
-			ldns_buffer_free(str_buf);
-			LDNS_FREE(param_rdf);
-			return LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+			status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+			goto error;
 		}
 		uint8_t *val_datap = datap;
 		datap += 2;
+
 		if (key == 0) {
 			// mandatory has comma separated list of key strings
 			char *start = val_str;
@@ -1914,15 +1938,19 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 					continue;
 				}
 				if (p == end || (*p == ',' && !escaped && p > start)) {
-					char item_str[256];
+					item_str = LDNS_XMALLOC(char, strlen(val_str) + 1);
+					if (!item_str) {
+						status = LDNS_STATUS_MEM_ERR;
+						goto error;
+					}
 					int item_len = p - start;
 					memcpy(item_str, start, item_len);
 					item_str[item_len] = '\0';
-					printf("AWS item %s\n", item_str);
 					int item_key = ldns_svcbparams_text2key(item_str);
 					ldns_write_uint16(datap, item_key);
 					datap += 2;
 					start = p + 1;
+					LDNS_FREE(item_str);
 				}
 				escaped = false;
 			}
@@ -1941,18 +1969,20 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 					*datap = item_len;
 					datap++;
 					memcpy(datap, start, item_len);
-					printf("AWS item %.*s\n", item_len, start);
 					datap += item_len;
 					start = p + 1;
 				}
 				escaped = false;
 			}
 		} else if (key == 2) {
-			// TODO - check valuestr empty
+			// no-default-alpn has empty value, nothing to do
 		} else if (key == 3) {
 			// port has a 16-bit unsigned int value
-			// TODO - check outside of range
 			int port = atoi(val_str);
+			if (port < 0 || port > USHRT_MAX) {
+				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+				goto error;
+			}
 			ldns_write_uint16(datap, port);
 			datap += 2;
 		} else if (key == 4) {
@@ -1966,41 +1996,86 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 					memcpy(addr_str, start, p - start);
 					addr_str[p-start] = '\0';
 					if (inet_pton(AF_INET, addr_str, &address) != 1) {
-						LDNS_FREE(token);
-						ldns_buffer_free(str_buf);
-						LDNS_FREE(param_rdf);
-						return LDNS_STATUS_INVALID_IP4;
+						status = LDNS_STATUS_INVALID_IP4;
+						goto error;
 					}
 					memcpy(datap, &address, 4);
 					datap += 4;
 					start = p + 1;
 				}
 			}
-		} else {
-			// unknown key uses escaped byte sequence string
-			status = ldns_str2rdf_long_str(&param_rdf, val_str);
-			if (status != LDNS_STATUS_OK) {
-				LDNS_FREE(token);
-				ldns_buffer_free(str_buf);
-				LDNS_FREE(param_rdf);
-				return LDNS_STATUS_INVALID_STR;
+		} else if (key == 5) {
+			// echconfig value is base64 encoded data
+			int16_t i;
+			size_t item_buffer_len = ldns_b64_ntop_calculate_size(strlen(val_str));
+			item_buffer = LDNS_XMALLOC(uint8_t, item_buffer_len);
+			if(!item_buffer) {
+				status = LDNS_STATUS_MEM_ERR;
+				goto error;
 			}
-			printf("AWS unk value %.*s\n", (int) ldns_rdf_size(param_rdf), ldns_rdf_data(param_rdf));
+			i = (uint16_t)ldns_b64_pton(val_str, item_buffer, item_buffer_len);
+			if (-1 == i) {
+				status = LDNS_STATUS_INVALID_B64;
+				goto error;
+			}
+			memcpy(datap, item_buffer, i);
+			datap += i;
+			LDNS_FREE(item_buffer);
+		} else if (key == 6) {
+			// ipv6hint has common separated IPv6 values
+			char addr_str[INET6_ADDRSTRLEN];
+			uint8_t address[LDNS_IP6ADDRLEN];
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					memcpy(addr_str, start, p - start);
+					addr_str[p-start] = '\0';
+					if (inet_pton(AF_INET6, addr_str, address) != 1) {
+						status = LDNS_STATUS_INVALID_IP6;
+						goto error;
+					}
+					memcpy(datap, &address, 16);
+					datap += 16;
+					start = p + 1;
+				}
+			}
+		} else {
+			// unknown key can be empty or uses escaped byte sequence string
+			if (val_str[0] != '\0') {
+				status = ldns_str2rdf_long_str(&item_rdf, val_str);
+				if (status != LDNS_STATUS_OK) {
+					status = LDNS_STATUS_INVALID_STR;
+					goto error;
+				}
+				memcpy(datap, ldns_rdf_data(item_rdf), ldns_rdf_size(item_rdf));
+				datap += ldns_rdf_size(item_rdf);
+				LDNS_FREE(item_rdf);
+			}
 		}
+
 		ldns_write_uint16(val_datap, datap - val_datap - 2);
+		LDNS_FREE(key_str);
+		LDNS_FREE(val_str);
 	}
 
 	params_len = datap - data;
-	printf("AWS params -");
-	for (int i = 0; i < params_len; i++) {
-		printf(" %d", data[i]);
-	}
-	printf("\n");
 	*rd = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_SVCBPARAMS, (uint16_t) params_len, data);
 
-	LDNS_FREE(token);
 	ldns_buffer_free(str_buf);
-	LDNS_FREE(param_rdf);
+	LDNS_FREE(token);
+	LDNS_FREE(data);
 	if(!*rd) return LDNS_STATUS_MEM_ERR;
+	return status;
+
+error:
+	ldns_buffer_free(str_buf);
+	LDNS_FREE(token);
+	LDNS_FREE(data);
+	LDNS_FREE(key_str);
+	LDNS_FREE(val_str);
+	LDNS_FREE(item_str);
+	LDNS_FREE(item_buffer);
+	LDNS_FREE(item_rdf);
 	return status;
 }
