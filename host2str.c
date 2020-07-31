@@ -1460,7 +1460,7 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 				datap += item_len;
 			}
 		} else if (key == 2) {
-			// no-default-alpn, must have length value
+			// no-default-alpn, must have zero length value
 			if (val_len != 0) {
 				return LDNS_STATUS_WIRE_RDATA_ERR;
 			}
