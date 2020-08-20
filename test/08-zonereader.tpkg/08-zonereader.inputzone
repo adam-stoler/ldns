@@ -3887,7 +3887,6 @@ https-alias.nlnetlabs.nl.       3600    IN      HTTPS   0 foo.com.
 https-service.nlnetlans.nl.     3600    IN      HTTPS   1 foo.com. no-default-alpn
 https-service.nlnetlabs.nl.     3600    IN      HTTPS   1 foo.com. alpn=h2
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn=h2,h3
-svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. 1=h2
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn="h2,h3"
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn=h2\,h3,h4
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. mandatory=alpn
@@ -3910,3 +3909,6 @@ svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. key12345=abc\
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn=h2,h3 key33=\000\001\002
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn=h2,h3 key1000="\a\bc123" port=1234
 svcb-service.nlnetlabs.nl.      3600    IN      SVCB    1 foo.com. alpn=h2,h3 key10000 port=1234
+svcb-service.nlnetlabs.nl.	    3600	IN      SVCB    1 . alpn=h2\,h3,h\\4
+svcb-service.nlnetlabs.nl.	    3600	IN      SVCB    1 . alpn=http/1.1,\001aa\003b,h2 port=8443
+svcb-service.nlnetlabs.nl.	    3600	IN      SVCB    1 . key10=aa\005b\bb

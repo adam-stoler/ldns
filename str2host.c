@@ -1812,14 +1812,12 @@ ldns_svcbparams_text2key(const char *str)
 	if (strcmp(str, "echconfig") == 0) { return 5; }
 	if (strcmp(str, "ipv6hint") == 0) { return 6; }
 	if (strncmp(str, "key", 3) == 0) {
-		int n = atoi(str + 3);
-		if (n > 0 && n <= USHRT_MAX) {
+		char *endptr;
+		errno = 0;
+		int n = strtol(str + 3, &endptr, 10);
+		if (errno == 0 && endptr != str + 3) {
 			return n;
 		}
-	}
-	int n = atoi(str);
-	if (n > 0 && n <= USHRT_MAX) {
-		return n;
 	}
 	return -1;
 } 
@@ -1868,7 +1866,6 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 	datap = data;
 
 	while (ldns_bget_token(str_buf, token, delimiters, LDNS_MAX_RDFLEN) > 0) {
-		//printf("AWS token %s\n", token);
 		key_str = LDNS_XMALLOC(char, strlen(token) + 1);
 		if (!key_str) {
 			status = LDNS_STATUS_MEM_ERR;
@@ -1917,7 +1914,7 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 		ldns_write_uint16(datap, key);
 		datap += 2;
 		
-		// no-default-alpn must have no value, all other knonw types must have
+		// no-default-alpn must have no value, all other known types must have
 		// a non-zero length value, and unknown types may or may not have a value
 		if ((val_str[0] == '\0' && key != 2 && key <= 6) ||
 				(val_str[0] != '\0' && key == 2)) {
@@ -1931,8 +1928,34 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			// mandatory has comma separated list of key strings
 			char *start = val_str;
 			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					item_str = LDNS_XMALLOC(char, strlen(val_str) + 1);
+					if (!item_str) {
+						status = LDNS_STATUS_MEM_ERR;
+						goto error;
+					}
+					int item_len = p - start;
+					memcpy(item_str, start, item_len);
+					item_str[item_len] = '\0';
+					int item_key = ldns_svcbparams_text2key(item_str);
+					if (item_key == -1) {
+						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						goto error;
+					}
+					ldns_write_uint16(datap, item_key);
+					datap += 2;
+					start = p + 1;
+					LDNS_FREE(item_str);
+				}
+			}
+		} else if (key == 1) {
+			// alpn has comma separated list of strings (allowing escaped byte sequences)
+			char *start = val_str;
+			char *end = start + strlen(val_str);
 			bool escaped = false;
 			for (char *p = start; p <= end; p++) {
+				// commas within an item must be escaped
 				if (*p == '\\' && !escaped) {
 					escaped = true;
 					continue;
@@ -1946,31 +1969,16 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 					int item_len = p - start;
 					memcpy(item_str, start, item_len);
 					item_str[item_len] = '\0';
-					int item_key = ldns_svcbparams_text2key(item_str);
-					ldns_write_uint16(datap, item_key);
-					datap += 2;
+					status = ldns_str2rdf_str(&item_rdf, item_str);
+					if (status != LDNS_STATUS_OK) {
+						status = LDNS_STATUS_INVALID_STR;
+						goto error;
+					}
+					memcpy(datap, ldns_rdf_data(item_rdf), ldns_rdf_size(item_rdf));
+					datap += ldns_rdf_size(item_rdf);
 					start = p + 1;
+					LDNS_FREE(item_rdf);
 					LDNS_FREE(item_str);
-				}
-				escaped = false;
-			}
-		} else if (key == 1) {
-			// alpn has comma separate list of string values
-			char *start = val_str;
-			char *end = start + strlen(val_str);
-			bool escaped = false;
-			for (char *p = start; p <= end; p++) {
-				if (*p == '\\' && !escaped) {
-					escaped = true;
-					continue;
-				}
-				if (p == end || (*p == ',' && !escaped && p > start)) {
-					int item_len = p - start;
-					*datap = item_len;
-					datap++;
-					memcpy(datap, start, item_len);
-					datap += item_len;
-					start = p + 1;
 				}
 				escaped = false;
 			}
@@ -1978,15 +1986,17 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			// no-default-alpn has empty value, nothing to do
 		} else if (key == 3) {
 			// port has a 16-bit unsigned int value
-			int port = atoi(val_str);
-			if (port < 0 || port > USHRT_MAX) {
+			char *endptr;
+			errno = 0;
+			int port = strtol(val_str, &endptr, 10);
+			if (errno != 0 || endptr == val_str || port < 0 || port > USHRT_MAX) {
 				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
 				goto error;
 			}
 			ldns_write_uint16(datap, port);
 			datap += 2;
 		} else if (key == 4) {
-			// ipv4hint has common separated IPv4 values
+			// ipv4hint has comma separated IPv4 values
 			char addr_str[INET_ADDRSTRLEN];
 			in_addr_t address;
 			char *start = val_str;
@@ -2022,7 +2032,7 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			datap += i;
 			LDNS_FREE(item_buffer);
 		} else if (key == 6) {
-			// ipv6hint has common separated IPv6 values
+			// ipv6hint has comma separated IPv6 values
 			char addr_str[INET6_ADDRSTRLEN];
 			uint8_t address[LDNS_IP6ADDRLEN];
 			char *start = val_str;

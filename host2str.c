@@ -1454,10 +1454,24 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 				if (datap + item_len > val_end_datap) {
 					return LDNS_STATUS_WIRE_RDATA_ERR;
 				}
-				ldns_buffer_printf(output, "%c%.*s", first_item ? '=' : ',', 
-					item_len, datap);
+				ldns_buffer *item_buf = ldns_buffer_new(item_len * 4);
+				if (!item_buf) {
+					return LDNS_STATUS_MEM_ERR;
+				}
+				ldns_characters2buffer_str(item_buf, item_len, datap);
+				ldns_buffer_flip(item_buf);
+				ldns_buffer_write_u8(output, first_item ? '=' : ',');
+				for (uint8_t *i = ldns_buffer_begin(item_buf);
+						i < ldns_buffer_end(item_buf); i++) {
+					// commas within an item must be escaped
+					if (*i == ',') {
+						ldns_buffer_write_u8(output, '\\');
+					}
+					ldns_buffer_write_u8(output, *i);
+				}
 				first_item = false;
 				datap += item_len;
+				ldns_buffer_free(item_buf);
 			}
 		} else if (key == 2) {
 			// no-default-alpn, must have zero length value
@@ -1484,6 +1498,8 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 				memcpy(&addr, datap, 4);
 				if (inet_ntop(AF_INET, &addr, addr_str, INET_ADDRSTRLEN)) {
 					ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', addr_str);
+				} else {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
 				}
 				first_item = false;
 			}
@@ -1498,6 +1514,8 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 				return LDNS_STATUS_MEM_ERR;
 			if (ldns_b64_ntop(datap, val_len, b64, size)) {
 				ldns_buffer_printf(output, "=%s", b64);
+			} else {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
 			}
 			datap += val_len;
 			LDNS_FREE(b64);
@@ -1513,13 +1531,15 @@ ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
 				memcpy(&addr, datap, 16);
 				if (inet_ntop(AF_INET6, addr, addr_str, INET6_ADDRSTRLEN)) {
 					ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', addr_str);
+				} else {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
 				}
 				first_item = false;
 			}
 		} else {
 			// unknown key
 			if (val_len > 0) {
-				ldns_buffer_printf(output, "=");
+				ldns_buffer_write_u8(output, '=');
 				ldns_characters2buffer_str(output, val_len, datap);
 				datap += val_len;
 			}

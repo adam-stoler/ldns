@@ -142,6 +142,7 @@ enum ldns_enum_rdf_type
 	/** draft-ietf-mboned-driad-amt-discovery **/
 	LDNS_RDF_TYPE_AMTRELAY,
 
+	/** draft-ietf-dnsop-svcb-https **/
 	LDNS_RDF_TYPE_SVCBPARAMS,
 
 	/* Aliases */
