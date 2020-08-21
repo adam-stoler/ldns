@@ -1815,7 +1815,7 @@ ldns_svcbparams_text2key(const char *str)
 		char *endptr;
 		errno = 0;
 		int n = strtol(str + 3, &endptr, 10);
-		if (errno == 0 && endptr != str + 3) {
+		if (errno == 0 && endptr > str + 3 && *endptr == '\0') {
 			return n;
 		}
 	}
@@ -1989,7 +1989,8 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			char *endptr;
 			errno = 0;
 			int port = strtol(val_str, &endptr, 10);
-			if (errno != 0 || endptr == val_str || port < 0 || port > USHRT_MAX) {
+			if (errno != 0 || endptr <= val_str || *endptr != '\0' ||
+					port < 0 || port > USHRT_MAX) {
 				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
 				goto error;
 			}
