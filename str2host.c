@@ -1823,6 +1823,64 @@ ldns_svcbparams_text2key(const char *str)
 	return -1;
 } 
 
+// Linked list of SVCB/HTTPS keys with optional data
+// Kept in sorted order to determine uniqueness and for proper order in wire format
+typedef struct ldns_struct_svcbparams_data ldns_svcbparams_data;
+struct ldns_struct_svcbparams_data
+{
+	uint16_t key;
+	uint8_t *data;
+	uint16_t datalen;
+	ldns_svcbparams_data *next;
+};
+
+// Create and insert a new element with the specified key in sorted order
+// Return NULL if the element already exists or memory allocation fails
+ldns_svcbparams_data *
+ldns_svcbparams_insert_new(ldns_svcbparams_data **head, uint16_t key)
+{
+	ldns_svcbparams_data *curr = *head;
+	ldns_svcbparams_data *prev = NULL;
+	while (curr != NULL) {
+		if (curr->key == key) {
+			return NULL;
+		}
+		if (key < curr->key) {
+			break;
+		}
+		prev = curr;
+		curr = curr->next;
+	}
+
+	ldns_svcbparams_data *latest = LDNS_MALLOC(ldns_svcbparams_data);
+	if (latest == NULL) {
+		return NULL;
+	}
+	latest->key = key;
+	latest->data = NULL;
+	latest->datalen = 0;
+	latest->next = curr;
+	if (prev == NULL) {
+		*head = latest;
+	} else {
+		prev->next = latest;
+	}
+	return latest;
+}
+
+// Free all elements and their data in the list
+void
+ldns_svcbparams_free(ldns_svcbparams_data *head)
+{
+	ldns_svcbparams_data *curr = head;
+	while (curr != NULL) {
+		ldns_svcbparams_data *tmp = curr;
+		curr = curr->next;
+		LDNS_FREE(tmp->data);
+		LDNS_FREE(tmp);
+	}
+}
+
 ldns_status
 ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 {
@@ -1838,6 +1896,8 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 	char *item_str = NULL;
 	uint8_t *item_buffer = NULL;
 	ldns_rdf *item_rdf = NULL;
+	ldns_svcbparams_data *params = NULL;
+	ldns_svcbparams_data *mandatory = NULL;
 
 	if(rd == NULL) {
 		return LDNS_STATUS_NULL;
@@ -1864,7 +1924,6 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 		status = LDNS_STATUS_MEM_ERR;
 		goto error;
 	}
-	datap = data;
 
 	while (ldns_bget_token(str_buf, token, delimiters, LDNS_MAX_RDFLEN) > 0) {
 		key_str = LDNS_XMALLOC(char, strlen(token) + 1);
@@ -1912,8 +1971,17 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			status = LDNS_STATUS_INVALID_SVCB_PARAM_KEY;
 			goto error;
 		}
-		ldns_write_uint16(datap, key);
-		datap += 2;
+		ldns_svcbparams_data *param = ldns_svcbparams_insert_new(&params, key);
+		if (param == NULL) {
+			status = LDNS_STATUS_INVALID_SVCB_PARAM_KEY;
+			goto error;
+		}
+		param->data = LDNS_XMALLOC(uint8_t, LDNS_MAX_RDFLEN);
+		if (!data) {
+			status = LDNS_STATUS_MEM_ERR;
+			goto error;
+		}
+		datap = param->data;
 		
 		// no-default-alpn must have no value, all other known types must have
 		// a non-zero length value, and unknown types may or may not have a value
@@ -1922,11 +1990,10 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
 			goto error;
 		}
-		uint8_t *val_datap = datap;
-		datap += 2;
 
 		if (key == 0) {
-			// mandatory has comma separated list of key strings
+			// mandatory has comma separated list of key strings, keys must be unique
+			// and mandatory (value 0) itself cannot be listed as one of the keys
 			char *start = val_str;
 			char *end = start + strlen(val_str);
 			for (char *p = start; p <= end; p++) {
@@ -1940,16 +2007,23 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 					memcpy(item_str, start, item_len);
 					item_str[item_len] = '\0';
 					int item_key = ldns_svcbparams_text2key(item_str);
-					if (item_key == -1) {
+					if (item_key == -1 || item_key == 0) {
 						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
 						goto error;
 					}
-					ldns_write_uint16(datap, item_key);
-					datap += 2;
+					if (ldns_svcbparams_insert_new(&mandatory, item_key) == NULL) {
+						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						goto error;
+					}
 					start = p + 1;
 					LDNS_FREE(item_str);
 				}
 			}
+			for (ldns_svcbparams_data *curr = mandatory; curr != NULL; curr = curr->next) {
+				ldns_write_uint16(datap, curr->key);
+				datap += 2;
+			}
+			ldns_svcbparams_free(mandatory);
 		} else if (key == 1) {
 			// alpn has comma separated list of strings (allowing escaped byte sequences)
 			char *start = val_str;
@@ -2066,15 +2140,25 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 			}
 		}
 
-		ldns_write_uint16(val_datap, datap - val_datap - 2);
+		param->datalen = datap - param->data;
 		LDNS_FREE(key_str);
 		LDNS_FREE(val_str);
 	}
 
+	datap = data;
+	for (ldns_svcbparams_data *curr = params; curr != NULL; curr = curr->next) {
+		ldns_write_uint16(datap, curr->key);
+		datap += 2;
+		ldns_write_uint16(datap, curr->datalen);
+		datap += 2;
+		memcpy(datap, curr->data, curr->datalen);
+		datap += curr->datalen;
+	}
 	params_len = datap - data;
 	*rd = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_SVCBPARAMS, (uint16_t) params_len, data);
 
 	ldns_buffer_free(str_buf);
+	ldns_svcbparams_free(params);
 	LDNS_FREE(token);
 	LDNS_FREE(data);
 	if(!*rd) return LDNS_STATUS_MEM_ERR;
@@ -2082,6 +2166,8 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 
 error:
 	ldns_buffer_free(str_buf);
+	ldns_svcbparams_free(params);
+	ldns_svcbparams_free(mandatory);
 	LDNS_FREE(token);
 	LDNS_FREE(data);
 	LDNS_FREE(key_str);
