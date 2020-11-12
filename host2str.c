@@ -1392,6 +1392,162 @@ ldns_rdf2buffer_str_amtrelay(ldns_buffer *output, const ldns_rdf *rdf)
 	return ldns_buffer_status(output);
 }
 
+static const char*
+ldns_svcbparams_key2text(int key) {
+	if (key == 0) { return "mandatory"; }
+	if (key == 1) { return "alpn"; }
+	if (key == 2) { return "no-default-alpn"; }
+	if (key == 3) { return "port"; }
+	if (key == 4) { return "ipv4hint"; }
+	if (key == 5) { return "echconfig"; }
+	if (key == 6) { return "ipv6hint"; }
+	return NULL;
+}
+
+ldns_status
+ldns_rdf2buffer_str_svcbparams(ldns_buffer *output, const ldns_rdf *rdf)
+{
+	uint8_t *data = ldns_rdf_data(rdf);
+	uint8_t *end = data + ldns_rdf_size(rdf);
+	uint8_t *datap = data;
+	bool first_key = true;
+	while (datap < end) {
+		uint16_t key = ldns_read_uint16(datap);
+		datap += 2;
+		const char *key_str = ldns_svcbparams_key2text(key);
+		if (key_str != NULL) {
+			ldns_buffer_printf(output, "%s%s", first_key ? "" : " ", key_str);
+		} else {
+			ldns_buffer_printf(output, "%skey%d", first_key ? "" : " ", key);
+		}
+
+		uint16_t val_len = ldns_read_uint16(datap);
+		datap += 2;
+		uint8_t *val_end_datap = datap + val_len;
+
+		if (key == 0) {
+			// mandatory
+			if (val_len == 0 || val_len % 2 != 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			bool first_item = true;
+			while (datap < val_end_datap) {
+				uint16_t item_key = ldns_read_uint16(datap);
+				const char *item_key_str = ldns_svcbparams_key2text(item_key);
+				if (item_key_str != NULL) {
+					ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', item_key_str);
+				} else {
+					ldns_buffer_printf(output, "%ckey%d", first_item ? '=' : ',', item_key);
+				}
+				first_item = false;
+				datap += 2;
+			}
+		} else if (key == 1) {
+			// alpn
+			if (val_len == 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			bool first_item = true;
+			while (datap < val_end_datap) {
+				uint8_t item_len = *datap;
+				datap++;
+				if (datap + item_len > val_end_datap) {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
+				}
+				ldns_buffer *item_buf = ldns_buffer_new(item_len * 4);
+				if (!item_buf) {
+					return LDNS_STATUS_MEM_ERR;
+				}
+				ldns_characters2buffer_str(item_buf, item_len, datap);
+				ldns_buffer_flip(item_buf);
+				ldns_buffer_write_u8(output, first_item ? '=' : ',');
+				for (uint8_t *i = ldns_buffer_begin(item_buf);
+						i < ldns_buffer_end(item_buf); i++) {
+					// commas within an item must be escaped
+					if (*i == ',') {
+						ldns_buffer_write_u8(output, '\\');
+					}
+					ldns_buffer_write_u8(output, *i);
+				}
+				first_item = false;
+				datap += item_len;
+				ldns_buffer_free(item_buf);
+			}
+		} else if (key == 2) {
+			// no-default-alpn, must have zero length value
+			if (val_len != 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+		} else if (key == 3) {
+			// port
+			if (val_len != 2) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			uint16_t port = ldns_read_uint16(datap);
+			datap += 2;
+			ldns_buffer_printf(output, "=%d", port);
+		} else if (key == 4) {
+			// ipv4hint
+			if (val_len == 0 || val_len % 4 != 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			char addr_str[INET_ADDRSTRLEN];
+			in_addr_t addr;
+			bool first_item = true;
+			for ( ; datap < val_end_datap; datap += 4) {
+				memcpy(&addr, datap, 4);
+				if (inet_ntop(AF_INET, &addr, addr_str, INET_ADDRSTRLEN)) {
+					ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', addr_str);
+				} else {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
+				}
+				first_item = false;
+			}
+		} else if (key == 5) {
+			// echconfig
+			if (val_len == 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			size_t size = ldns_b64_ntop_calculate_size(val_len);
+			char *b64;
+			if (!(b64 = LDNS_XMALLOC(char, size)))
+				return LDNS_STATUS_MEM_ERR;
+			if (ldns_b64_ntop(datap, val_len, b64, size)) {
+				ldns_buffer_printf(output, "=%s", b64);
+			} else {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			datap += val_len;
+			LDNS_FREE(b64);
+		} else if (key == 6) {
+			// ipv6hint
+			if (val_len == 0 || val_len % 16 != 0) {
+				return LDNS_STATUS_WIRE_RDATA_ERR;
+			}
+			char addr_str[INET6_ADDRSTRLEN];
+			uint8_t addr[LDNS_IP6ADDRLEN];
+			bool first_item = true;
+			for ( ; datap < val_end_datap; datap += 16) {
+				memcpy(&addr, datap, 16);
+				if (inet_ntop(AF_INET6, addr, addr_str, INET6_ADDRSTRLEN)) {
+					ldns_buffer_printf(output, "%c%s", first_item ? '=' : ',', addr_str);
+				} else {
+					return LDNS_STATUS_WIRE_RDATA_ERR;
+				}
+				first_item = false;
+			}
+		} else {
+			// unknown key
+			if (val_len > 0) {
+				ldns_buffer_write_u8(output, '=');
+				ldns_characters2buffer_str(output, val_len, datap);
+				datap += val_len;
+			}
+		}
+		first_key = false;
+	}
+	return ldns_buffer_status(output);
+}
 
 static ldns_status
 ldns_rdf2buffer_str_fmt(ldns_buffer *buffer,
@@ -1510,6 +1666,9 @@ ldns_rdf2buffer_str_fmt(ldns_buffer *buffer,
 			break;
 		case LDNS_RDF_TYPE_AMTRELAY:
 			res = ldns_rdf2buffer_str_amtrelay(buffer, rdf);
+			break;
+		case LDNS_RDF_TYPE_SVCBPARAMS:
+			res = ldns_rdf2buffer_str_svcbparams(buffer, rdf);
 			break;
 		}
 	} else {

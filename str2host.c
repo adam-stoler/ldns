@@ -1800,3 +1800,294 @@ ldns_str2rdf_amtrelay(ldns_rdf **rd, const char *str)
 	if(!*rd) return LDNS_STATUS_MEM_ERR;
 	return LDNS_STATUS_OK;
 }
+
+static int
+ldns_svcbparams_text2key(const char *str)
+{
+	if (strcmp(str, "mandatory") == 0) { return 0; }
+	if (strcmp(str, "alpn") == 0) { return 1; }
+	if (strcmp(str, "no-default-alpn") == 0) { return 2; }
+	if (strcmp(str, "port") == 0) { return 3; }
+	if (strcmp(str, "ipv4hint") == 0) { return 4; }
+	if (strcmp(str, "echconfig") == 0) { return 5; }
+	if (strcmp(str, "ipv6hint") == 0) { return 6; }
+	if (strncmp(str, "key", 3) == 0) {
+		char *endptr;
+		errno = 0;
+		long n = strtol(str + 3, &endptr, 10);
+		if (errno == 0 && endptr > str + 3 && *endptr == '\0' &&
+				n >= 0 && n <= USHRT_MAX) {
+			return n;
+		}
+	}
+	return -1;
+} 
+
+ldns_status
+ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
+{
+	uint8_t *data = NULL;
+	uint8_t *datap = NULL;
+	ldns_status status = LDNS_STATUS_OK;
+	int params_len;
+	const char *delimiters = "\n\t ";
+	char *token = NULL;
+	ldns_buffer *str_buf = NULL;
+	char *key_str = NULL;
+	char *val_str = NULL;
+	char *item_str = NULL;
+	uint8_t *item_buffer = NULL;
+	ldns_rdf *item_rdf = NULL;
+
+	if(rd == NULL) {
+		return LDNS_STATUS_NULL;
+	}
+
+	str_buf = LDNS_MALLOC(ldns_buffer);
+	if(!str_buf) {
+		return LDNS_STATUS_MEM_ERR;
+	}
+	ldns_buffer_new_frm_data(str_buf, (char *)str, strlen(str));
+	if(ldns_buffer_status(str_buf) != LDNS_STATUS_OK) {
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
+	}
+
+	token = LDNS_XMALLOC(char, LDNS_MAX_RDFLEN);
+	if (!token) {
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
+	}
+
+	data = LDNS_XMALLOC(uint8_t, LDNS_MAX_RDFLEN);
+	if (!data) {
+		status = LDNS_STATUS_MEM_ERR;
+		goto error;
+	}
+	datap = data;
+
+	while (ldns_bget_token(str_buf, token, delimiters, LDNS_MAX_RDFLEN) > 0) {
+		key_str = LDNS_XMALLOC(char, strlen(token) + 1);
+		if (!key_str) {
+			status = LDNS_STATUS_MEM_ERR;
+			goto error;
+		}
+		val_str = LDNS_XMALLOC(char, strlen(token) + 1);
+		if (!val_str) {
+			status = LDNS_STATUS_MEM_ERR;
+			goto error;
+		}
+		char *equals_in_str = strchr(token, '=');
+		if (equals_in_str == NULL) {
+			// Just a key with no value, set value str to empty string
+			strcpy(key_str, token);
+			val_str[0] = '\0';
+		} else {
+			uint equals_idx = equals_in_str - token;
+			uint token_len = strlen(token);
+			if (equals_idx > 0 && equals_idx < strlen(token) - 1) {
+				// '=' is in the middle of the string, split key and value on it
+				memcpy(key_str, token, equals_idx);
+				key_str[equals_idx] = '\0';
+				// Strip off qoutes around the value if they are used
+				if (token[equals_idx+1] == '"' && token[token_len-1] == '"') {
+					if (token_len - equals_idx < 4) {
+						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						goto error;
+					}
+					memcpy(val_str, equals_in_str + 2, token_len - equals_idx - 2);
+					val_str[token_len - equals_idx - 3] = '\0';
+				} else {
+					strcpy(val_str, equals_in_str + 1);
+				}
+			} else {
+				// '=' is at the beginning or end of the token, this is not allowed
+				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+				goto error;
+			}
+		}
+
+		int key = ldns_svcbparams_text2key(key_str);
+		if (key == -1) {
+			status = LDNS_STATUS_INVALID_SVCB_PARAM_KEY;
+			goto error;
+		}
+		ldns_write_uint16(datap, key);
+		datap += 2;
+		
+		// no-default-alpn must have no value, all other known types must have
+		// a non-zero length value, and unknown types may or may not have a value
+		if ((val_str[0] == '\0' && key != 2 && key <= 6) ||
+				(val_str[0] != '\0' && key == 2)) {
+			status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+			goto error;
+		}
+		uint8_t *val_datap = datap;
+		datap += 2;
+
+		if (key == 0) {
+			// mandatory has comma separated list of key strings
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					item_str = LDNS_XMALLOC(char, strlen(val_str) + 1);
+					if (!item_str) {
+						status = LDNS_STATUS_MEM_ERR;
+						goto error;
+					}
+					int item_len = p - start;
+					memcpy(item_str, start, item_len);
+					item_str[item_len] = '\0';
+					int item_key = ldns_svcbparams_text2key(item_str);
+					if (item_key == -1) {
+						status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+						goto error;
+					}
+					ldns_write_uint16(datap, item_key);
+					datap += 2;
+					start = p + 1;
+					LDNS_FREE(item_str);
+				}
+			}
+		} else if (key == 1) {
+			// alpn has comma separated list of strings (allowing escaped byte sequences)
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			bool escaped = false;
+			for (char *p = start; p <= end; p++) {
+				// commas within an item must be escaped
+				if (*p == '\\' && !escaped) {
+					escaped = true;
+					continue;
+				}
+				if (p == end || (*p == ',' && !escaped && p > start)) {
+					item_str = LDNS_XMALLOC(char, strlen(val_str) + 1);
+					if (!item_str) {
+						status = LDNS_STATUS_MEM_ERR;
+						goto error;
+					}
+					int item_len = p - start;
+					memcpy(item_str, start, item_len);
+					item_str[item_len] = '\0';
+					status = ldns_str2rdf_str(&item_rdf, item_str);
+					if (status != LDNS_STATUS_OK) {
+						status = LDNS_STATUS_INVALID_STR;
+						goto error;
+					}
+					memcpy(datap, ldns_rdf_data(item_rdf), ldns_rdf_size(item_rdf));
+					datap += ldns_rdf_size(item_rdf);
+					start = p + 1;
+					LDNS_FREE(item_rdf);
+					LDNS_FREE(item_str);
+				}
+				escaped = false;
+			}
+		} else if (key == 2) {
+			// no-default-alpn has empty value, nothing to do
+		} else if (key == 3) {
+			// port has a 16-bit unsigned int value
+			char *endptr;
+			errno = 0;
+			long port = strtol(val_str, &endptr, 10);
+			if (errno != 0 || endptr <= val_str || *endptr != '\0' ||
+					port < 0 || port > USHRT_MAX) {
+				status = LDNS_STATUS_INVALID_SVCB_PARAM_VALUE;
+				goto error;
+			}
+			ldns_write_uint16(datap, port);
+			datap += 2;
+		} else if (key == 4) {
+			// ipv4hint has comma separated IPv4 values
+			char addr_str[INET_ADDRSTRLEN];
+			in_addr_t address;
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					memcpy(addr_str, start, p - start);
+					addr_str[p-start] = '\0';
+					if (inet_pton(AF_INET, addr_str, &address) != 1) {
+						status = LDNS_STATUS_INVALID_IP4;
+						goto error;
+					}
+					memcpy(datap, &address, 4);
+					datap += 4;
+					start = p + 1;
+				}
+			}
+		} else if (key == 5) {
+			// echconfig value is base64 encoded data
+			int16_t i;
+			size_t item_buffer_len = ldns_b64_ntop_calculate_size(strlen(val_str));
+			item_buffer = LDNS_XMALLOC(uint8_t, item_buffer_len);
+			if(!item_buffer) {
+				status = LDNS_STATUS_MEM_ERR;
+				goto error;
+			}
+			i = (uint16_t)ldns_b64_pton(val_str, item_buffer, item_buffer_len);
+			if (-1 == i) {
+				status = LDNS_STATUS_INVALID_B64;
+				goto error;
+			}
+			memcpy(datap, item_buffer, i);
+			datap += i;
+			LDNS_FREE(item_buffer);
+		} else if (key == 6) {
+			// ipv6hint has comma separated IPv6 values
+			char addr_str[INET6_ADDRSTRLEN];
+			uint8_t address[LDNS_IP6ADDRLEN];
+			char *start = val_str;
+			char *end = start + strlen(val_str);
+			for (char *p = start; p <= end; p++) {
+				if (p == end || (*p == ',' && p > start)) {
+					memcpy(addr_str, start, p - start);
+					addr_str[p-start] = '\0';
+					if (inet_pton(AF_INET6, addr_str, address) != 1) {
+						status = LDNS_STATUS_INVALID_IP6;
+						goto error;
+					}
+					memcpy(datap, &address, 16);
+					datap += 16;
+					start = p + 1;
+				}
+			}
+		} else {
+			// unknown key can be empty or uses escaped byte sequence string
+			if (val_str[0] != '\0') {
+				status = ldns_str2rdf_long_str(&item_rdf, val_str);
+				if (status != LDNS_STATUS_OK) {
+					status = LDNS_STATUS_INVALID_STR;
+					goto error;
+				}
+				memcpy(datap, ldns_rdf_data(item_rdf), ldns_rdf_size(item_rdf));
+				datap += ldns_rdf_size(item_rdf);
+				LDNS_FREE(item_rdf);
+			}
+		}
+
+		ldns_write_uint16(val_datap, datap - val_datap - 2);
+		LDNS_FREE(key_str);
+		LDNS_FREE(val_str);
+	}
+
+	params_len = datap - data;
+	*rd = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_SVCBPARAMS, (uint16_t) params_len, data);
+
+	ldns_buffer_free(str_buf);
+	LDNS_FREE(token);
+	LDNS_FREE(data);
+	if(!*rd) return LDNS_STATUS_MEM_ERR;
+	return status;
+
+error:
+	ldns_buffer_free(str_buf);
+	LDNS_FREE(token);
+	LDNS_FREE(data);
+	LDNS_FREE(key_str);
+	LDNS_FREE(val_str);
+	LDNS_FREE(item_str);
+	LDNS_FREE(item_buffer);
+	LDNS_FREE(item_rdf);
+	return status;
+}

@@ -3880,3 +3880,35 @@ r._dns-sd._udp.\200\015\246\0018\;\169.jelte.nlnetlabs.nl.	3600	IN	A	1.2.3.4
 dr._dns-sd._udp.\(\242\202\\.	3600	IN	PTR	r._dns-sd._udp.\200\015\246\0018\;\169.
 loc.nlnetlabs.nl.	3600	IN	LOC	51 30 58.004 N 00 05 21.514 W 24m 10m 10m 10m
 motherfish.xiph.org.	8064	IN	A	\# 0
+svcb-alias.nlnetlabs.nl.	3600	IN	SVCB	0 foo.com.
+svcb-service.nlnetlans.nl.	3600	IN	SVCB	1 foo.com. no-default-alpn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2
+https-alias.nlnetlabs.nl.	3600	IN	HTTPS	0 foo.com.
+https-service.nlnetlans.nl.	3600	IN	HTTPS	1 foo.com. no-default-alpn
+https-service.nlnetlabs.nl.	3600	IN	HTTPS	1 foo.com. alpn=h2
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2\,h3,h4
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn,no-default-alpn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn,no-default-alpn alpn=h2,h3 no-default-alpn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. port=1234 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn port=555 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4,5.6.7.8 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4,5.6.7.8
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2 ipv4hint=4.5.6.7
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. echconfig=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. echconfig=1234 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2 ipv4hint=4.5.6.7 echconfig=zzzz
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv6hint=2001:2002::1
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 ipv6hint=2001::1,2001::2
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn ipv6hint=2001::1,2001::2 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. key12345=abcdefg\012hijk\005\004lmn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key33=\000\001\002
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key1000=abc123 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key10000 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . alpn=h2\,h3,h\\4
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . alpn=http/1.1,\001aa\003b,h2 port=8443
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . key10=aa\005bbb

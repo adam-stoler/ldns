@@ -351,7 +351,8 @@ ldns_rr_new_frm_str_internal(ldns_rr **newrr, const char *str,
 		case LDNS_RDF_TYPE_WKS        : /* it is the last rd field. */
 		case LDNS_RDF_TYPE_IPSECKEY   :
 		case LDNS_RDF_TYPE_AMTRELAY   :
-		case LDNS_RDF_TYPE_NSEC       :	if (r_cnt == r_max - 1) {
+		case LDNS_RDF_TYPE_NSEC       :	
+		case LDNS_RDF_TYPE_SVCBPARAMS : if (r_cnt == r_max - 1) {
 							delimiters = "\n";
 							break;
 						}
@@ -1971,6 +1972,9 @@ static const ldns_rdf_type type_zonemd_wireformat[] = {
 	LDNS_RDF_TYPE_INT32,
 	LDNS_RDF_TYPE_INT8, LDNS_RDF_TYPE_INT8, LDNS_RDF_TYPE_HEX
 };
+static const ldns_rdf_type type_svcb_wireformat[] = {
+	LDNS_RDF_TYPE_INT16, LDNS_RDF_TYPE_DNAME, LDNS_RDF_TYPE_SVCBPARAMS
+};
 
 /* nsec3 is some vars, followed by same type of data of nsec */
 static const ldns_rdf_type type_nsec3_wireformat[] = {
@@ -2221,8 +2225,8 @@ static ldns_rr_descriptor rdata_field_descriptors[] = {
 
 {LDNS_RR_TYPE_CSYNC, "CSYNC", 3, 3, type_csync_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
 {LDNS_RR_TYPE_ZONEMD, "ZONEMD", 4, 4, type_zonemd_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
-{LDNS_RR_TYPE_NULL, "TYPE64", 1, 1, type_0_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
-{LDNS_RR_TYPE_NULL, "TYPE65", 1, 1, type_0_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
+{LDNS_RR_TYPE_SVCB, "SVCB", 2, 3, type_svcb_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
+{LDNS_RR_TYPE_HTTPS, "HTTPS", 2, 3, type_svcb_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
 {LDNS_RR_TYPE_NULL, "TYPE66", 1, 1, type_0_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
 {LDNS_RR_TYPE_NULL, "TYPE67", 1, 1, type_0_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
 {LDNS_RR_TYPE_NULL, "TYPE68", 1, 1, type_0_wireformat, LDNS_RDF_TYPE_NONE, LDNS_RR_NO_COMPRESS, 0 },
