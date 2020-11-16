@@ -1870,15 +1870,16 @@ ldns_svcbparams_insert_new(ldns_svcbparams_data **head, uint16_t key)
 
 // Free all elements and their data in the list
 void
-ldns_svcbparams_free(ldns_svcbparams_data *head)
+ldns_svcbparams_free(ldns_svcbparams_data **head)
 {
-	ldns_svcbparams_data *curr = head;
+	ldns_svcbparams_data *curr = *head;
 	while (curr != NULL) {
 		ldns_svcbparams_data *tmp = curr;
 		curr = curr->next;
 		LDNS_FREE(tmp->data);
 		LDNS_FREE(tmp);
 	}
+	*head = NULL;
 }
 
 ldns_status
@@ -2023,7 +2024,7 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 				ldns_write_uint16(datap, curr->key);
 				datap += 2;
 			}
-			ldns_svcbparams_free(mandatory);
+			ldns_svcbparams_free(&mandatory);
 		} else if (key == 1) {
 			// alpn has comma separated list of strings (allowing escaped byte sequences)
 			char *start = val_str;
@@ -2158,7 +2159,7 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 	*rd = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_SVCBPARAMS, (uint16_t) params_len, data);
 
 	ldns_buffer_free(str_buf);
-	ldns_svcbparams_free(params);
+	ldns_svcbparams_free(&params);
 	LDNS_FREE(token);
 	LDNS_FREE(data);
 	if(!*rd) return LDNS_STATUS_MEM_ERR;
@@ -2166,8 +2167,8 @@ ldns_str2rdf_svcbparams(ldns_rdf **rd, const char *str)
 
 error:
 	ldns_buffer_free(str_buf);
-	ldns_svcbparams_free(params);
-	ldns_svcbparams_free(mandatory);
+	ldns_svcbparams_free(&params);
+	ldns_svcbparams_free(&mandatory);
 	LDNS_FREE(token);
 	LDNS_FREE(data);
 	LDNS_FREE(key_str);
