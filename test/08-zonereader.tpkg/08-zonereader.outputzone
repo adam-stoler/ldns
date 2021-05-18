@@ -3891,24 +3891,26 @@ svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2\,h3,h4
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn,no-default-alpn
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn,port,ipv4hint,key1234
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn,no-default-alpn alpn=h2,h3 no-default-alpn
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. port=1234
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. port=1234 alpn=h2,h3
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn port=555 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn alpn=h2,h3 port=555
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4,5.6.7.8 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. port=1234 ipv4hint=1.2.3.4,5.6.7.8
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv4hint=1.2.3.4,5.6.7.8
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2 ipv4hint=4.5.6.7
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. echconfig=1234
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. echconfig=1234 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 echconfig=1234
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2 ipv4hint=4.5.6.7 echconfig=zzzz
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. ipv6hint=2001:2002::1
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 ipv6hint=2001::1,2001::2
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn ipv6hint=2001::1,2001::2 alpn=h2,h3
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. mandatory=alpn alpn=h2,h3 ipv6hint=2001::1,2001::2
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. key12345=abcdefg\012hijk\005\004lmn
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key33=\000\001\002
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key1000=abc123 port=1234
-svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 key10000 port=1234
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 port=1234 key1000=abc123
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 port=1234 key10000
+svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 foo.com. alpn=h2,h3 port=1234 ipv4hint=1.2.3.4 key33=\000\001
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . alpn=h2\,h3,h\\4
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . alpn=http/1.1,\001aa\003b,h2 port=8443
 svcb-service.nlnetlabs.nl.	3600	IN	SVCB	1 . key10=aa\005bbb
